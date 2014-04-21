@@ -1,7 +1,9 @@
 import numpy as np
 import itertools
 import pylab
+from pylab import grid
 import fileinput
+import scipy.linalg
 
 
 class ShellModel:
@@ -119,10 +121,7 @@ class ShellModel:
                     occupied.append(1)                
 
             if len(occupied) % 2 != 0:
-                """ the odd condition is due to the fact that the 
-                state 11110000 is really a4*a3*a2*a1*|0>, so the counting
-                must be done from left to right. But the counting I do is
-                right to left and I then compensate with the above condition """
+                """ If the number of permuatations is odd """
                 return -1
             else:
                 return 1
@@ -148,11 +147,6 @@ class ShellModel:
                 state = state + 2**(self.nspstates - i)
         return state*phase_factor          
             
-    def init_H(self):
-        self.H = np.zeros(shape=(self.nSD,self.nSD))
-        self.H += self.setup_twobody()
-        self.H += self.setup_onebody()
-
     def setup_twobody(self):
         M = np.zeros(shape=(self.nSD,self.nSD))
         """ Two body interaction from sp-me's in file """
@@ -189,15 +183,47 @@ class ShellModel:
 
     def vary_perturbation_strength(self,g):
         for ME in self.Htb:
-            ME[4] = ME[4]*g
+            ME[4] = -g
+
+    def init_H(self):
+        self.H = np.zeros(shape=(self.nSD,self.nSD))
+        self.H += self.setup_twobody()
+        self.H += self.setup_onebody()
                   
                 
 if __name__=='__main__':
-    data = 'example.dat'
+    do_plot = True
+    data = 'shell_np8_ne8_ns16.dat'
     smObj = ShellModel(data)
     smObj.init_SD(restrictions=True)
-    smObj.init_H()
-    print smObj.H
-    eigenvalues = np.linalg.eigvals(smObj.H)
-    print eigenvalues
-    smObj.vary_perturbation_strength(5)
+    if do_plot:
+        energies = []
+        perturbation = []
+        for g in range(-10,11):
+            g = g/10.0
+            smObj.vary_perturbation_strength(g)
+            smObj.init_H()
+            eigenvalues = scipy.linalg.eigh(smObj.H,eigvals_only=True)
+#            eigenvalues = np.linalg.eigvals(smObj.H)
+#            eigenvalues = sorted(eigenvalues)
+            energies.append(eigenvalues)
+            perturbation.append(g)
+            print smObj.H
+            print eigenvalues
+        energies = np.asarray(energies)
+        perturbation = np.asarray(perturbation)
+        for n in range(0,smObj.nSD):
+            pylab.plot(perturbation,energies[:,n])
+        pylab.xlabel('g')
+        pylab.xlim(-1.0,1.0)
+        grid()
+        pylab.savefig("/user/sullivan/public_html/shell.pdf")
+    else:
+        smObj.vary_perturbation_strength(0.0)
+        print [bin(i) for i in smObj.SD]
+        smObj.init_H()
+        print smObj.H
+        eigenvalues = scipy.linalg.eigh(smObj.H,eigvals_only=True)
+        print eigenvalues
+    
+
