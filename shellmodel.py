@@ -100,22 +100,22 @@ class ShellModel:
             return False                
 
     def restrict(self):
-        """ Only allow SD with pairs """
-        # subset_SD = []
-        # for state in self.SD:
-        #     if self.pair(state):
-        #         subset_SD.append(state)
-        # self.SD = subset_SD
-        subset_SD = []
-        for state in self.SD:
-            if self.total_M(state)==0:
-                subset_SD.append(state)
-        self.SD = subset_SD
-        subset_SD = []
-        for state in self.SD:
-            if self.number_of_broken_pairs(state)==0:
-                subset_SD.append(state)
-        self.SD = subset_SD
+        """ Only allow SD with M = 0 """
+        if True:
+            subset_SD = []
+            for state in self.SD:
+                if self.total_M(state)==0:
+                    subset_SD.append(state)
+            self.SD = subset_SD
+        """ Only allow SD with <=n broken pairs """
+        if True:
+            n = 0
+            subset_SD = []
+            for state in self.SD:
+            #if self.number_of_broken_pairs(state)==0:
+                if self.number_of_broken_pairs(state)==n:
+                    subset_SD.append(state)
+            self.SD = subset_SD
 
 
     def total_M(self,state):
@@ -138,15 +138,15 @@ class ShellModel:
             for spstate2 in occupied:                
                 if spstate[0] != spstate2[0] and \
                         spstate2[1]==spstate[1] and spstate2[2]==spstate[2] and \
-                        spstate2[3]==spstate[3]:
+                        spstate2[3]==spstate[3] and spstate[4] == -spstate2[4]:
                     npairs += 1                    
-        # double counting, thus / npairs by 2
+        # double counting, thus / npairs by 2        
         return self.nparticles/2 - npairs/2
             
 
     def twobody_ME(self,i,j,k,l,state):
         """ First step is to check that states k and l
-        are withing the SD """
+        are within the SD """
         ###################
         def phase(i,state):
             """ i should be an element in 
@@ -158,14 +158,13 @@ class ShellModel:
                     break
                 if state & (0b1<<self.nspstates - n) == (0b1<<self.nspstates - n):
                     occupied.append(1)                
-
             if len(occupied) % 2 != 0:
                 """ If the number of permuatations is odd """
                 return -1
             else:
                 return 1
         ###################                
-        """ Because of how P+ and P- are defined the matrix elements should
+        """ Becausshell_np4_ne4_ns8.date of how P+ and P- are defined the matrix elements should
             always be a1*a2*a2a1  for the spme 1 2 1 2 """
         if state & (0b1<<self.nspstates-l) != (0b1<<self.nspstates-l) or \
                 state & (0b1<<self.nspstates-k) != (0b1<<self.nspstates-k):
@@ -189,7 +188,7 @@ class ShellModel:
     def setup_twobody(self):
         M = np.zeros(shape=(self.nSD,self.nSD))
         """ Two body interaction from sp-me's in file """
-        for alpha in self.SD:            
+        for alpha in self.SD:
             """ Loop over SD, and for each find the contribution of
             the sp_2body matrix elements """
             for sp_tbme in self.Htb:
@@ -216,13 +215,13 @@ class ShellModel:
             for n in reversed(range(0,self.nspstates)):
                 if state & (0b1<<n) == (0b1<<n):
                     occupied.append(self.nspstates-n)
-            for sp_state in occupied:                
+            for sp_state in occupied:
                 M[ob_ind,ob_ind] += self.spenergy[sp_state-1]
         return M        
 
     def vary_perturbation_strength(self,g):
-        for ME in self.Htb:
-            ME[4] = -g
+        for i in range(0,len(self.Htb)):
+            self.Htb[i][4] *= g
 
     def init_H(self):
         self.H = np.zeros(shape=(self.nSD,self.nSD))
@@ -299,11 +298,8 @@ class ShellModel:
                 total_mj += _2mj/2.0
         return [total_mj,sd]
 
-        
-           
-    def J_squared(self,sd):
-        """ Calculating J^2 using quasispin operators """
-        J_lower_J_raise_sd_final = [0,0]
+    def J_lower_J_raise(self,sd):
+        J_lower_J_raise_sd_final = []
         #print bin(sd),sd
         J_raise_sd = self.J_raise(sd)
         if len(J_raise_sd)!=0:
@@ -311,70 +307,105 @@ class ShellModel:
                 #print bin(state[1]),state[1]
                 J_lower_J_raise_sd = self.J_lower(state[1])
                 for i in range(0,len(J_lower_J_raise_sd)):
-                    #print J_lower_J_raise_sd                        
-                    if J_lower_J_raise_sd[i][1] == sd:
-                        J_lower_J_raise_sd[i][0] *= state[0]
-                    else:
-                        print bin(J_lower_J_raise_sd[i][1]),bin(sd),"off-diaganol J^2 element"
-                        continue # need to investigate off-diagonol elements
-                        # Morten indicates that one should only look at <psi|J^2|psi>
-                        # so I am correct in just ignoring the off diaganol piece here
-                        #print "STOP: error in J^2"
-                        #exit()
-                    J_lower_J_raise_sd_final[0] += J_lower_J_raise_sd[i][0]
-                    J_lower_J_raise_sd_final[1] = J_lower_J_raise_sd[i][1]
+                    J_lower_J_raise_sd[i][0] *= state[0]
+                    J_lower_J_raise_sd_final.append(J_lower_J_raise_sd[i])
         else:
-            J_lower_J_raise_sd_final[1] = sd
+            J_lower_J_raise_sd_final.append([0,sd])
+        return J_lower_J_raise_sd_final
+
+    def J_squared(self,sd):
+        """ Calculating J^2 using quasispin operators """
+        J_squared_sd = []
+        J_lower_J_raise_sd = self.J_lower_J_raise(sd)
+        list_of_unique_sd = []
+        for _sd in J_lower_J_raise_sd:
+            list_of_unique_sd.append(_sd[1])
+        list_of_unique_sd = list(set(list_of_unique_sd))
+        if len(list_of_unique_sd)==len(J_lower_J_raise_sd):
+            J_squared_sd = J_lower_J_raise_sd
+        else:
+            for unique_sd in list_of_unique_sd:
+                temp = [0, unique_sd]
+                for _sd in J_lower_J_raise_sd:
+                    if _sd[1] == unique_sd:
+                        temp[0]+=_sd[0]
+                J_squared_sd.append(temp)    
         J_z_sd = self.J_z(sd)
         J_z_J_z_sd = [J_z_sd[0]*J_z_sd[0],sd]
-        if J_lower_J_raise_sd_final[1]==J_z_sd[1]==sd:
-            return J_lower_J_raise_sd_final[0]+J_z_J_z_sd[0]+J_z_sd[0]
-        else:
-            print "STOP: something wrong with quasispin operators"
-            exit()
+        for _sd in J_squared_sd:
+            if _sd[1]==sd:
+                _sd[0] += J_z_sd[0] + J_z_J_z_sd[0]                
+        return J_squared_sd
 
-    def total_J(self,sd,Jsq=None):
+    def operator_expectation_value(self,operator,final,initial):
+        if type(final)==type(initial)==list:
+            True
+        elif type(initial)==list: 
+            final = [[1,final]]
+        elif type(final)==list: 
+            initial = [[1,initial]]
+        else:
+            initial = [[1,initial]]
+            final = [[1,final]]
+
+        final_operator_sd = []
+        for sd in initial:
+            operator_sd = operator(sd[1])
+            for _sd in operator_sd:
+                _sd[0] *= sd[0]
+                final_operator_sd.append(_sd)
+        list_of_unique_sd = []
+        operator_sd = []
+        for _sd in final_operator_sd:
+            list_of_unique_sd.append(_sd[1])
+        list_of_unique_sd = list(set(list_of_unique_sd))
+        if len(list_of_unique_sd)==len(final_operator_sd):
+            operator_sd = final_operator_sd
+        else:
+            for unique_sd in list_of_unique_sd:
+                temp = [0, unique_sd]
+                for _sd in final_operator_sd:
+                    if _sd[1] == unique_sd:
+                        temp[0]+=_sd[0]
+                operator_sd.append(temp)    
+
+        J_squared_eigenvalue = 0
+        for op_sd in operator_sd:
+            for query_sd in final:
+                if query_sd[1]==op_sd[1]:
+                    J_squared_eigenvalue += query_sd[0]*op_sd[0]
+        return J_squared_eigenvalue
+                                             
+           
+    def total_J(self,sd=None,Jsq=None):
         if Jsq != None:
             return 0.5*(-1+np.sqrt(1+4*Jsq))            
+        elif sd == None:
+            print "STOP: no slater determinant or Jsquared eigenvalue given"
+            exit()
         else:
             J_sq = self.J_squared(sd)
             return 0.5*(-1+np.sqrt(1+4*J_sq))
         
-    def find_J_of_eigenstates(self,coefs):
-        """ Using eigenstates from diaganolizing H, calculate <psi|J^2|psi> """
-        H_eigenstates = []
-        for i in range(0,self.nSD):
-            H_eigenstates.append([coefs[i],self.SD])
-        print H_eigenstates
-        for estate in H_eigenstates:
-            for sd in estate[1]:
-                print self.J_squared(sd)
-                
-            
-            
-        
-                
-            
-        
-        
-        
-                  
+                          
                 
 if __name__=='__main__':
     do_plot = False
-    data = 'shell_np4_ne3_ns8.dat'
+    #data = 'shell_np2_ne2_ns8.dat'
+    data = "shell_np2_ne1_ns4.dat"
+    #data = 'shell_usdb.dat'
     smObj = ShellModel(data)
     smObj.init_SD(restrictions=True)
     if do_plot:
         energies = []
         perturbation = []
-        for g in range(-10,11):
-            g = g/10.0
+        scale = [1.0/10.0,1.0/9.0,1.0/8.0,1.0/7.0,1.0/6.0,1.0/5.0,1.0/4.0,1.0/3.0,1.0/2.0,1,2,3,4,5,6,7,8,9,10]
+        for g in scale:
             smObj.vary_perturbation_strength(g)
             smObj.init_H()
             eigenvalues = scipy.linalg.eigh(smObj.H,eigvals_only=True)
             energies.append(eigenvalues)
-            perturbation.append(g)
+            perturbation.append(np.log10(g))
             print smObj.H
             print eigenvalues
         energies = np.asarray(energies)
@@ -382,20 +413,27 @@ if __name__=='__main__':
         for n in range(0,smObj.nSD):
             pylab.plot(perturbation,energies[:,n])
         pylab.xlabel('g')
-        pylab.xlim(-1.0,1.0)
+        #pylab.xlim(0.1,10.0)
         grid()
         pylab.savefig("/user/sullivan/public_html/shell.pdf")
     else:
-        smObj.vary_perturbation_strength(1.0)
+        #smObj.vary_perturbation_strength(1.0)
         print [bin(i) for i in smObj.SD]
-        #print [smObj.total_J(i) for i in smObj.SD]
+        print smObj.nSD
         smObj.init_H()
-        print smObj.H
-        #eigenvalues = scipy.linalg.eigh(smObj.H,eigvals_only=True)
+        for row in smObj.H:
+            print "[",
+            for item in row:
+                print format(item,'+.00f'),
+            print "]"
+            
         eigenvectors = np.linalg.eigh(smObj.H)
-        smObj.find_J_of_eigenstates(eigenvectors[1])
-            
-            
-        
-    
 
+        # find j-values of H eigenstates 
+        for eigenstate in eigenvectors[1]:
+            initial_eigenstate = []
+            for i in range(0,smObj.nSD):            
+                initial_eigenstate.append([eigenstate[i],smObj.SD[i]])             
+            J_sqrd = smObj.operator_expectation_value(smObj.J_squared,initial_eigenstate,initial_eigenstate)
+            J = smObj.total_J(Jsq=J_sqrd)
+            print J_sqrd,J
