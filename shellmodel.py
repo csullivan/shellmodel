@@ -4,6 +4,9 @@ import pylab
 from pylab import grid
 import fileinput
 import scipy.linalg
+import scipy.misc
+import block_diag
+import scipy.sparse.linalg as lanczos
 
 
 class ShellModel:
@@ -21,6 +24,7 @@ class ShellModel:
     SD_lookup = []
     Htb = []
     H = []
+    possible_total_M = []
     def __init__(self,data):
         print "Start"
         self.nparticles = self.input_parser(data,'Particles')    
@@ -75,15 +79,21 @@ class ShellModel:
                     return H_tb
 
                     
-    def init_SD(self,restrictions=None):
+    def init_SD(self,M=None,nbroken=None):
         """ Builds all combinations of SD for nparticles in 
             nspstates using the bit representation """
         state_list = range(0,self.nspstates)
         for combo in itertools.combinations(state_list,self.nparticles):
             self.SD.append(sum(2**i for i in combo))
-        if restrictions:
-            self.restrict()
-        self.SD = list(reversed(sorted(self.SD))) #ordering for purposes of H
+        if M != None and nbroken != None:
+            self.restrict(M=M,nbroken=nbroken)
+        elif M != None:
+            self.restrict(M=M)
+        elif nbroken != None:
+            self.restrict(nbroken=nbroken)
+        self.SD = list(reversed(sorted(self.SD))) #ordering for purposes of H (this assumes the 
+        # largest number (SD) has the lowest energy which is only true if the  sp-states in the 
+        # input file are ordered from lowest energy to highest energy
         self.nSD = len(self.SD)
         self.SD_lookup = set(self.SD)
 
@@ -99,21 +109,20 @@ class ShellModel:
         else:
             return False                
 
-    def restrict(self):
+    def restrict(self,M=None,nbroken=None):
         """ Only allow SD with M = 0 """
-        if True:
+        if M != None:
             subset_SD = []
             for state in self.SD:
-                if self.total_M(state)==0:
+                if self.total_M(state)==M:
                     subset_SD.append(state)
             self.SD = subset_SD
         """ Only allow SD with <=n broken pairs """
-        if True:
-            n = 0
+        if nbroken != None:
             subset_SD = []
             for state in self.SD:
             #if self.number_of_broken_pairs(state)==0:
-                if self.number_of_broken_pairs(state)==n:
+                if self.number_of_broken_pairs(state)==nbroken:
                     subset_SD.append(state)
             self.SD = subset_SD
 
@@ -140,8 +149,9 @@ class ShellModel:
                         spstate2[1]==spstate[1] and spstate2[2]==spstate[2] and \
                         spstate2[3]==spstate[3] and spstate[4] == -spstate2[4]:
                     npairs += 1                    
-        # double counting, thus / npairs by 2        
-        return self.nparticles/2 - npairs/2
+        npairs = npairs/2  # The above double counts number of pairs
+        # integer division ensures that this works for both even and odd numbers of particles
+        return self.nparticles/2 - npairs
             
 
     def twobody_ME(self,i,j,k,l,state):
@@ -387,53 +397,88 @@ class ShellModel:
             J_sq = self.J_squared(sd)
             return 0.5*(-1+np.sqrt(1+4*J_sq))
         
+    def init_block_diaganol_H(self):
+        """ Build a block diaganol matrix based on number of broken pairs,
+        and subsets of total M projection """         
+
+        sp_j = []
+        n=n_prev = -1
+        l=l_prev = 0
+        j=j_prev = 0
+        energy=energy_prev = -999
+        slater_determinants = []
+        """ Build a list of the j's for each level """
+        for spstate in self.states:
+            if energy_prev == -999:
+                n_prev = spstate[1]
+                l_prev = spstate[2]
+                j_prev = spstate[3]
+                energy_prev = spstate[5]
+                sp_j.append(spstate[3]/2.0)
+                continue
+            if spstate[1] == n_prev and spstate[2] == l_prev and spstate[3] == j_prev and spstate[5] == energy_prev:
+                continue
+            else:
+                n_prev = spstate[1]
+                l_prev = spstate[2]
+                j_prev = spstate[3]
+                energy_prev = spstate[5]
+                sp_j.append(spstate[3]/2.0)
+                
+        total_hamiltonian = []
+        self.possible_total_M = np.arange(
+                -sum(list(reversed(sorted(self.jz)))[0:self.nparticles]),
+                     sum(list(reversed(sorted(self.jz)))[0:self.nparticles])+1,1.0)
+
+        for nbroken in range(0,self.nparticles/2+1):       
+            nbroken_Hamiltonians = []
+            """ for M in range of -max_proj with nparticles to +max_proj """
+            for M in self.possible_total_M:
+                self.init_SD(M=M,nbroken=nbroken)
+                self.init_H()
+                slater_determinants += self.SD
+                nbroken_Hamiltonians.append(self.H)
+#                print "Number of broken pairs = ",nbroken," J projection Mj = ",M," SD: ",[bin(i) for i in self.SD]
+#                for row in self.H:
+#                    print "[",
+#                    for item in row:
+#                        print format(item,'+.00f'),
+#                    print "]"    
+            total_hamiltonian.append(block_diag.block_diag(arrs=nbroken_Hamiltonians))
+        total_hamiltonian = block_diag.block_diag(arrs=total_hamiltonian)
+        self.SD = slater_determinants
+        self.nSD = len(self.SD)
+        self.H = total_hamiltonian
+#        for row in total_hamiltonian:
+#            print "[",
+#            for item in row:
+#                print format(item,'+.00f'),
+#            print "]"
+
+
                           
                 
 if __name__=='__main__':
-    do_plot = False
-    #data = 'shell_np2_ne2_ns8.dat'
-    data = "shell_np2_ne1_ns4.dat"
+    data = 'shell_np4_ne4_ns8.dat' #project2
+    #data = 'shell_np2_ne1_ns6.dat'
+    #data = 'shell_np2_ne2_ns4.dat'
+    #data = 'shell_sp.dat'
     #data = 'shell_usdb.dat'
     smObj = ShellModel(data)
-    smObj.init_SD(restrictions=True)
-    if do_plot:
-        energies = []
-        perturbation = []
-        scale = [1.0/10.0,1.0/9.0,1.0/8.0,1.0/7.0,1.0/6.0,1.0/5.0,1.0/4.0,1.0/3.0,1.0/2.0,1,2,3,4,5,6,7,8,9,10]
-        for g in scale:
-            smObj.vary_perturbation_strength(g)
-            smObj.init_H()
-            eigenvalues = scipy.linalg.eigh(smObj.H,eigvals_only=True)
-            energies.append(eigenvalues)
-            perturbation.append(np.log10(g))
-            print smObj.H
-            print eigenvalues
-        energies = np.asarray(energies)
-        perturbation = np.asarray(perturbation)
-        for n in range(0,smObj.nSD):
-            pylab.plot(perturbation,energies[:,n])
-        pylab.xlabel('g')
-        #pylab.xlim(0.1,10.0)
-        grid()
-        pylab.savefig("/user/sullivan/public_html/shell.pdf")
-    else:
-        #smObj.vary_perturbation_strength(1.0)
-        print [bin(i) for i in smObj.SD]
-        print smObj.nSD
-        smObj.init_H()
-        for row in smObj.H:
-            print "[",
-            for item in row:
-                print format(item,'+.00f'),
-            print "]"
-            
-        eigenvectors = np.linalg.eigh(smObj.H)
+    smObj.init_block_diaganol_H()
+    eigenvectors = np.linalg.eigh(smObj.H)
+    #eigenvectors = lanczos.eigsh(smObj.H,smObj.nSD-1)
+    vectors = np.matrix.transpose(eigenvectors[1])
 
-        # find j-values of H eigenstates 
-        for eigenstate in eigenvectors[1]:
-            initial_eigenstate = []
-            for i in range(0,smObj.nSD):            
-                initial_eigenstate.append([eigenstate[i],smObj.SD[i]])             
-            J_sqrd = smObj.operator_expectation_value(smObj.J_squared,initial_eigenstate,initial_eigenstate)
-            J = smObj.total_J(Jsq=J_sqrd)
-            print J_sqrd,J
+    # find j-values of H eigenstates 
+    for eigenstate in vectors:
+        initial_eigenstate = []
+        for i in np.nonzero(eigenstate)[0]:
+            initial_eigenstate.append([eigenstate[i],smObj.SD[i]])
+        J_sqrd = smObj.operator_expectation_value(smObj.J_squared,initial_eigenstate,initial_eigenstate)
+        J = smObj.total_J(Jsq=J_sqrd)
+
+        print initial_eigenstate,J_sqrd,J
+#        print len(initial_eigenstate),J_sqrd,J
+
+ 
