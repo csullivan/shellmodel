@@ -6,6 +6,8 @@ import fileinput
 import scipy.linalg
 import scipy.misc
 import block_diag
+import fileinput
+import sys
 import scipy.sparse.linalg as lanczos
 
 
@@ -25,12 +27,58 @@ class ShellModel:
     Htb = []
     H = []
     possible_total_M = []
-    def __init__(self,data):
+    def __init__(self,data,interaction=None):
         print "Start"
         self.nparticles = self.input_parser(data,'Particles')    
         self.states = self.input_parser(data,'States')    
         self.Htb = self.input_parser(data,'Matrix Elements')    
         self.init_qm_numbers()
+        if interaction == 'usdb':
+            self.usdb_tbme_mass_factor()
+        self.init_two_body_H()
+    def reinitialize(self,data,interaction=None):
+        self.nparticles = 0
+        self.nspstates = 0    
+        self.nSD = 0
+        self.states = []
+        self.index = []
+        self.n = []
+        self.l = []
+        self.j = []
+        self.jz = []
+        self.spenergy = []
+        self.SD = []
+        self.SD_lookup = []
+        self.Htb = []
+        self.H = []
+        self.possible_total_M = []
+        print "Start"
+        self.nparticles = self.input_parser(data,'Particles')    
+        self.states = self.input_parser(data,'States')    
+        self.Htb = self.input_parser(data,'Matrix Elements')    
+        self.init_qm_numbers()
+        if interaction == 'usdb':
+            self.usdb_tbme_mass_factor()
+        self.init_two_body_H()
+    def usdb_tbme_mass_factor(self):
+        """ B. A. Brown's tbme for usdb have a mass
+        dependence which must be adjusted, this function
+        multiplies the tbme in Htb by the below factor """
+        """ Note: this function must be called before
+        init_two_body_H() """
+        factor = np.power(18.0/(16.0+self.nparticles),0.3)
+        print "Scaling tbme by mass factor: ", factor
+        for me in self.Htb:
+            me[4] *= factor            
+    def init_two_body_H(self):
+        two_body_matrix = np.zeros(
+            shape=(self.nspstates+1,
+                   self.nspstates+1,
+                   self.nspstates+1,
+                   self.nspstates+1))
+        for me in self.Htb:
+            two_body_matrix[me[0],me[1],me[2],me[3]] = me[4]
+        self.Htb = two_body_matrix
     def init_qm_numbers(self):
         self.index = self.states[:,0]
         self.n = self.states[:,1]
@@ -195,12 +243,13 @@ class ShellModel:
                 state = state + 2**(self.nspstates - i)
         return state*phase_factor          
             
-    def setup_twobody(self):
+    def setup_twobody_old(self):
         M = np.zeros(shape=(self.nSD,self.nSD))
         """ Two body interaction from sp-me's in file """
         for alpha in self.SD:
             """ Loop over SD, and for each find the contribution of
             the sp_2body matrix elements """
+            print self.Htb
             for sp_tbme in self.Htb:
                 i = int(sp_tbme[0])
                 j = int(sp_tbme[1])
@@ -216,6 +265,30 @@ class ShellModel:
                         M[beta_ind,alpha_ind] += np.sign(alpha_prime)*V
         return M
 
+
+    def setup_twobody(self):
+        M = np.zeros(shape=(self.nSD,self.nSD))
+        """ Two body interaction from sp-me's in file """
+        for alpha in self.SD:
+            """ Loop over SD, and for each find the contribution of
+            the sp_2body matrix elements """
+            for j in range(1,self.nspstates+1):
+                for i in range(1,j):
+                    for l in range(1,self.nspstates+1):
+                        for k in range(1,l):
+                            V = self.Htb[i,j,k,l]
+                            if V == 0:
+                                continue
+                            else:
+                                alpha_prime = self.twobody_ME(i,j,k,l,alpha)
+                                if abs(alpha_prime) in self.SD_lookup:
+                                    beta_ind = self.SD.index(abs(alpha_prime))
+                                    alpha_ind = self.SD.index(alpha)
+                                    M[alpha_ind,beta_ind] += np.sign(alpha_prime)*V #pg458
+                                    if(alpha_ind != beta_ind): #Symmetric matrix
+                                        M[beta_ind,alpha_ind] += np.sign(alpha_prime)*V
+        return M
+
     def setup_onebody(self):
         M = np.zeros(shape=(self.nSD,self.nSD))
         """ One body interaction """
@@ -228,10 +301,6 @@ class ShellModel:
             for sp_state in occupied:
                 M[ob_ind,ob_ind] += self.spenergy[sp_state-1]
         return M        
-
-    def vary_perturbation_strength(self,g):
-        for i in range(0,len(self.Htb)):
-            self.Htb[i][4] *= g
 
     def init_H(self):
         self.H = np.zeros(shape=(self.nSD,self.nSD))
@@ -456,29 +525,79 @@ class ShellModel:
 #            print "]"
 
 
-                          
+def replace_exp(file,searchExp,replaceExp):
+    for line in fileinput.input(file, inplace=1):
+        if searchExp in line:
+            line = line.replace(searchExp,replaceExp)
+        sys.stdout.write(line)
+
+
+def remove_duplicates(seq):
+    """ Order preserving removal of duplicates """
+    seen = set()
+    seen_add = seen.add
+    return [ x for x in seq if x not in seen and not seen_add(x)]
                 
 if __name__=='__main__':
-    data = 'shell_np4_ne4_ns8.dat' #project2
+    #data = 'shell_np4_ne4_ns8.dat' #project2
     #data = 'shell_np2_ne1_ns6.dat'
+    #data = 'shell_sd.dat'
     #data = 'shell_np2_ne2_ns4.dat'
     #data = 'shell_sp.dat'
-    #data = 'shell_usdb.dat'
-    smObj = ShellModel(data)
-    smObj.init_block_diaganol_H()
-    eigenvectors = np.linalg.eigh(smObj.H)
-    #eigenvectors = lanczos.eigsh(smObj.H,smObj.nSD-1)
-    vectors = np.matrix.transpose(eigenvectors[1])
+    data = 'shell_usdb.dat'
+    smObj = ShellModel(data,interaction='usdb')
+    if True:
+        smObj.init_block_diaganol_H()
+        eigenvectors = np.linalg.eigh(smObj.H)
+        vectors = np.matrix.transpose(eigenvectors[1])
 
-    # find j-values of H eigenstates 
-    for eigenstate in vectors:
-        initial_eigenstate = []
-        for i in np.nonzero(eigenstate)[0]:
-            initial_eigenstate.append([eigenstate[i],smObj.SD[i]])
-        J_sqrd = smObj.operator_expectation_value(smObj.J_squared,initial_eigenstate,initial_eigenstate)
-        J = smObj.total_J(Jsq=J_sqrd)
+        # find j-values of H eigenstates 
+        nevalue = 0
+        energy = []
+        Js = []
+        for eigenstate in vectors:
+            initial_eigenstate = []
+            for i in np.nonzero(eigenstate)[0]:
+                initial_eigenstate.append([eigenstate[i],smObj.SD[i]])
+            J_sqrd = smObj.operator_expectation_value(smObj.J_squared,initial_eigenstate,initial_eigenstate)
+            J = smObj.total_J(Jsq=J_sqrd)
+            energy.append(round(eigenvectors[0][nevalue],3))
+            Js.append(round(J,1))
+            nevalue += 1
 
-        print initial_eigenstate,J_sqrd,J
-#        print len(initial_eigenstate),J_sqrd,J
+        energy = remove_duplicates(energy)
+        Js = remove_duplicates(Js)
+        for eg in energy:
+            print eg
+        exit()
+#            print eigenvectors[0][nevalue],"(",round(J,1),")"
+            #print eigenvectors[0][nevalue],J,"(",round(J,1),")"
 
- 
+
+    if False:
+        energies = []
+        perturbation = []
+        g_prev = -1.0
+        grange = [-0.5,0.5]
+        smObj.init_block_diaganol_H()
+        eigenvalues = scipy.linalg.eigh(smObj.H,eigvals_only=True)
+        eigenvalues += 23.632
+        energies.append(eigenvalues)
+        energies.append(eigenvalues)
+        perturbation.append(0.5)
+        perturbation.append(-0.5)
+            #print smObj.H
+            #replace_exp(data,format(g_prev,'+.01f'),format(g,'+.01f'))
+            #g_prev = g            
+            #smObj.reinitialize(data)
+        energies = np.asarray(energies)
+        perturbation = np.asarray(perturbation)        
+        for n in range(0,len(energies[0])):
+            pylab.plot(perturbation,energies[:,n])
+#        pylab.xlabel('g')
+        pylab.xlim(-1,1)
+        pylab.ylim(-1,6)
+        grid()
+        pylab.savefig("/user/sullivan/public_html/shell.pdf")
+        #replace_exp(data,"+1.0","-1.0")   
+        exit()
