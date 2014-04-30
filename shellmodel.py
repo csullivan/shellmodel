@@ -2,13 +2,14 @@ import numpy as np
 import itertools
 import pylab
 from pylab import grid
+from pylab import rcParams
 import fileinput
 import scipy.linalg
 import scipy.misc
 import block_diag
 import fileinput
 import sys
-import scipy.sparse.linalg as lanczos
+import argparse
 
 
 class ShellModel:
@@ -518,12 +519,7 @@ class ShellModel:
         self.SD = slater_determinants
         self.nSD = len(self.SD)
         self.H = total_hamiltonian
-#        for row in total_hamiltonian:
-#            print "[",
-#            for item in row:
-#                print format(item,'+.00f'),
-#            print "]"
-
+        limit = 15
 
 def replace_exp(file,searchExp,replaceExp):
     for line in fileinput.input(file, inplace=1):
@@ -539,65 +535,127 @@ def remove_duplicates(seq):
     return [ x for x in seq if x not in seen and not seen_add(x)]
                 
 if __name__=='__main__':
-    #data = 'shell_np4_ne4_ns8.dat' #project2
-    #data = 'shell_np2_ne1_ns6.dat'
-    #data = 'shell_sd.dat'
-    #data = 'shell_np2_ne2_ns4.dat'
-    #data = 'shell_sp.dat'
-    data = 'shell_usdb.dat'
+    p = argparse.ArgumentParser()
+   
+    p.add_argument('-i','--input',dest='input',
+                   action='store',required=True,
+                   help='The input file to be used in the shell-model calculation')
+    p.add_argument('-o','--output',dest='output',
+                   action='store',required=False, default="output.pdf",
+                   help='output file')
+    p.add_argument("-p", "--plot", dest="plot", default=0)
+    p = p.parse_args()
+    data = p.input
+    if p.output == "output.pdf":
+        output = p.input.replace(".dat",".pdf")
+    else:
+        output = p.outputs
+    
+
+    ## -== Begin Shell Model Calculations ==- ##
     smObj = ShellModel(data,interaction='usdb')
-    if True:
+    if True:        
         smObj.init_block_diaganol_H()
+        #smObj.init_SD()
+        #smObj.init_H()
+
+        limit = 42
+        for i,row in enumerate(smObj.H):
+            counter = 0
+            print "[",
+            for item in row:
+                if item == 0.0:
+                    print "_____",
+                else:
+                    print format(item,'+.02f'),
+                if counter == limit:
+                    break
+                counter +=1
+            print "]"
+            if i==limit+1:
+                break
+
         eigenvectors = np.linalg.eigh(smObj.H)
         vectors = np.matrix.transpose(eigenvectors[1])
+        unique_energy = [round(k,2) for k in eigenvectors[0]]
+        unique_energy = remove_duplicates(unique_energy)
 
+        if True:
         # find j-values of H eigenstates 
-        nevalue = 0
-        energy = []
-        Js = []
-        for eigenstate in vectors:
-            initial_eigenstate = []
-            for i in np.nonzero(eigenstate)[0]:
-                initial_eigenstate.append([eigenstate[i],smObj.SD[i]])
-            J_sqrd = smObj.operator_expectation_value(smObj.J_squared,initial_eigenstate,initial_eigenstate)
-            J = smObj.total_J(Jsq=J_sqrd)
-            energy.append(round(eigenvectors[0][nevalue],3))
-            Js.append(round(J,1))
-            nevalue += 1
+            nevalue = 0
+            energy = []
+            Js = []
+            print "Done with energies, beginning J calculation."
+            prev_energy = -99999.9
+            for eigenstate in vectors:
+                initial_eigenstate = []
+                current_energy = round(eigenvectors[0][nevalue])
+                for i in np.nonzero(eigenstate)[0]:
+                    initial_eigenstate.append([eigenstate[i],smObj.SD[i]])
+                
+                J_sqrd = smObj.operator_expectation_value(smObj.J_squared,initial_eigenstate,initial_eigenstate)
+                J = smObj.total_J(Jsq=J_sqrd)
+                print round(eigenvectors[0][nevalue],3),round(J,1)
+                energy.append(round(eigenvectors[0][nevalue],3))
+                Js.append(round(J,1))            
+                nevalue += 1
 
-        energy = remove_duplicates(energy)
-        Js = remove_duplicates(Js)
-        for eg in energy:
-            print eg
-        exit()
-#            print eigenvectors[0][nevalue],"(",round(J,1),")"
-            #print eigenvectors[0][nevalue],J,"(",round(J,1),")"
+            unique_js = []
+            j_prev = -1
+            for j in Js:
+                if j_prev == -1:
+                    j_prev = j
+                    unique_js.append(j)
+                if j != j_prev:
+                    unique_js.append(j)
+                    j_prev = j
+            print len(unique_js), len(unique_energy)
+                
 
-
-    if False:
-        energies = []
-        perturbation = []
-        g_prev = -1.0
-        grange = [-0.5,0.5]
-        smObj.init_block_diaganol_H()
-        eigenvalues = scipy.linalg.eigh(smObj.H,eigvals_only=True)
-        eigenvalues += 23.632
-        energies.append(eigenvalues)
-        energies.append(eigenvalues)
-        perturbation.append(0.5)
-        perturbation.append(-0.5)
-            #print smObj.H
-            #replace_exp(data,format(g_prev,'+.01f'),format(g,'+.01f'))
-            #g_prev = g            
-            #smObj.reinitialize(data)
-        energies = np.asarray(energies)
-        perturbation = np.asarray(perturbation)        
-        for n in range(0,len(energies[0])):
-            pylab.plot(perturbation,energies[:,n])
-#        pylab.xlabel('g')
-        pylab.xlim(-1,1)
+    if p.plot != 0:
+        pylab.rcParams['text.latex.preamble'] = [
+            r'\usepackage{helvet}',   
+            r'\usepackage{sansmath}', 
+            r'\sansmath']  
+        unique_energy = np.asarray(unique_energy) - unique_energy[0]
+        fig = pylab.figure(figsize=(4,7))
+        #pylab.rc('lines',linewidth=1.5)
+        rcParams['axes.linewidth'] = 1.5
+        rcParams['lines.linewidth'] = 1.5
+        rcParams['ytick.major.size'] = 12
+        rcParams['ytick.major.width'] = 1.5
+        rcParams['ytick.minor.size'] = 5
+        rcParams['ytick.minor.width'] = 1.5
+        canvas = fig.add_subplot(1,1,1)
+        pylab.minorticks_on()
+        canvas.yaxis.set_minor_locator(pylab.FixedLocator(np.arange(-0.5,6,1)))
+        for i,eg in enumerate(unique_energy):
+            energies = []
+            domain = []
+            energies.append(eg)
+            domain.append(-0.5)
+            energies.append(eg)
+            domain.append(+0.5)
+            pylab.plot(domain,energies,color="red")
+            try:
+                J=unique_js[i]
+            except:
+                J=0
+            if eg<6:
+                if smObj.nparticles % 2 !=0:
+                    canvas.annotate(str(int(J*2))+'/2+',xy=(0.55,eg-0.05),xytext=(0.55,eg-0.05))
+                else:
+                    canvas.annotate(str(int(J))+'+',xy=(0.55,eg-0.05),xytext=(0.55,eg-0.05))
+        pylab.xlim(-0.85,2)
         pylab.ylim(-1,6)
-        grid()
-        pylab.savefig("/user/sullivan/public_html/shell.pdf")
-        #replace_exp(data,"+1.0","-1.0")   
-        exit()
+        pylab.tick_params(\
+            axis='x',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom='off',      # ticks along the bottom edge are off
+            top='off',         # ticks along the top edge are off
+            labelbottom='off') # labels along the bottom edge are off
+        #grid()
+        canvas.annotate(p.input.replace("shell_","").replace(".dat",""),xy=(1.55,-0.8),xytext=(1.55,-0.8))
+        pylab.ylabel("E (MeV)")
+        pylab.savefig("/user/sullivan/public_html/"+output)
+        exit()    
