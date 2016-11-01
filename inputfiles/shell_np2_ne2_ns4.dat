@@ -1,0 +1,12 @@
+Particles = 2
+
+States (id,n,l,2j,2mj,energy):
+1 0 0 1 +1 0.0
+2 0 0 1 -1 0.0
+3 1 0 1 +1 1.0
+4 1 0 1 -1 1.0
+
+Matrix Elements (<id',id'|V|id,id>):
+1 2 1 2 -1.0
+1 2 3 4 -1.0
+3 4 3 4 -1.0

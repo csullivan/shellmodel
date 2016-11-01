@@ -14,7 +14,7 @@ import argparse
 
 class ShellModel:
     nparticles = 0
-    nspstates = 0    
+    nspstates = 0
     nSD = 0
     states = []
     index = []
@@ -30,16 +30,16 @@ class ShellModel:
     possible_total_M = []
     def __init__(self,data,interaction=None):
         print "Start"
-        self.nparticles = self.input_parser(data,'Particles')    
-        self.states = self.input_parser(data,'States')    
-        self.Htb = self.input_parser(data,'Matrix Elements')    
+        self.nparticles = self.input_parser(data,'Particles')
+        self.states = self.input_parser(data,'States')
+        self.Htb = self.input_parser(data,'Matrix Elements')
         self.init_qm_numbers()
         if interaction == 'usdb':
             self.usdb_tbme_mass_factor()
         self.init_two_body_H()
     def reinitialize(self,data,interaction=None):
         self.nparticles = 0
-        self.nspstates = 0    
+        self.nspstates = 0
         self.nSD = 0
         self.states = []
         self.index = []
@@ -54,9 +54,9 @@ class ShellModel:
         self.H = []
         self.possible_total_M = []
         print "Start"
-        self.nparticles = self.input_parser(data,'Particles')    
-        self.states = self.input_parser(data,'States')    
-        self.Htb = self.input_parser(data,'Matrix Elements')    
+        self.nparticles = self.input_parser(data,'Particles')
+        self.states = self.input_parser(data,'States')
+        self.Htb = self.input_parser(data,'Matrix Elements')
         self.init_qm_numbers()
         if interaction == 'usdb':
             self.usdb_tbme_mass_factor()
@@ -70,7 +70,7 @@ class ShellModel:
         factor = np.power(18.0/(16.0+self.nparticles),0.3)
         print "Scaling tbme by mass factor: ", factor
         for me in self.Htb:
-            me[4] *= factor            
+            me[4] *= factor
     def init_two_body_H(self):
         two_body_matrix = np.zeros(
             shape=(self.nspstates+1,
@@ -100,7 +100,7 @@ class ShellModel:
                         try:
                             line = next(input_file)
                             if line == '\n':
-                                """ Break if empty line is 
+                                """ Break if empty line is
                                 found after reading last state """
                                 break
                         except:
@@ -116,7 +116,7 @@ class ShellModel:
                         try:
                             line = next(input_file)
                             if line == '\n':
-                                """ Break if empty line is 
+                                """ Break if empty line is
                                 found after reading last state """
                                 break
                         except:
@@ -127,9 +127,9 @@ class ShellModel:
                     H_tb = np.asarray(H_tb)
                     return H_tb
 
-                    
+
     def init_SD(self,M=None,nbroken=None):
-        """ Builds all combinations of SD for nparticles in 
+        """ Builds all combinations of SD for nparticles in
             nspstates using the bit representation """
         state_list = range(0,self.nspstates)
         for combo in itertools.combinations(state_list,self.nparticles):
@@ -140,14 +140,14 @@ class ShellModel:
             self.restrict(M=M)
         elif nbroken != None:
             self.restrict(nbroken=nbroken)
-        self.SD = list(reversed(sorted(self.SD))) #ordering for purposes of H (this assumes the 
-        # largest number (SD) has the lowest energy which is only true if the  sp-states in the 
+        self.SD = list(reversed(sorted(self.SD))) #ordering for purposes of H (this assumes the
+        # largest number (SD) has the lowest energy which is only true if the  sp-states in the
         # input file are ordered from lowest energy to highest energy
         self.nSD = len(self.SD)
         self.SD_lookup = set(self.SD)
 
     def pair(self,state):
-        pairs = []            
+        pairs = []
         """ Selects every other sp state from 0 to nspstates """
         for n in range(0,self.nspstates)[::2]:
             """ Moves through the state and picks out pairs """
@@ -156,7 +156,7 @@ class ShellModel:
         if len(pairs)==self.nparticles/2:
             return True
         else:
-            return False                
+            return False
 
     def restrict(self,M=None,nbroken=None):
         """ Only allow SD with M = 0 """
@@ -193,38 +193,38 @@ class ShellModel:
             if state & (0b1<<n) == (0b1<<n):
                 occupied.append(self.states[self.nspstates-n-1])
         for spstate in occupied:
-            for spstate2 in occupied:                
+            for spstate2 in occupied:
                 if spstate[0] != spstate2[0] and \
                         spstate2[1]==spstate[1] and spstate2[2]==spstate[2] and \
                         spstate2[3]==spstate[3] and spstate[4] == -spstate2[4]:
-                    npairs += 1                    
+                    npairs += 1
         npairs = npairs/2  # The above double counts number of pairs
         # integer division ensures that this works for both even and odd numbers of particles
         return self.nparticles/2 - npairs
-            
+
 
     def twobody_ME(self,i,j,k,l,state):
         """ First step is to check that states k and l
         are within the SD """
         ###################
         def phase(i,state):
-            """ i should be an element in 
-            {1 ... number_of_single_particle_states} 
+            """ i should be an element in
+            {1 ... number_of_single_particle_states}
             representing one of the spstates """
             occupied = []
             for n in range(1,self.nspstates+1):
                 if n == i:
                     break
                 if state & (0b1<<self.nspstates - n) == (0b1<<self.nspstates - n):
-                    occupied.append(1)                
+                    occupied.append(1)
             if len(occupied) % 2 != 0:
                 """ If the number of permuatations is odd """
                 return -1
             else:
                 return 1
-        ###################                
-        """ Becausshell_np4_ne4_ns8.date of how P+ and P- are defined the matrix elements should
-            always be a1*a2*a2a1  for the spme 1 2 1 2 """
+        ###################
+        """ Because of how two body operators are defined the matrix elements should
+            always be ap*.aq*.as.ar  for the spme p q r s """
         if state & (0b1<<self.nspstates-l) != (0b1<<self.nspstates-l) or \
                 state & (0b1<<self.nspstates-k) != (0b1<<self.nspstates-k):
             return 0
@@ -242,8 +242,8 @@ class ShellModel:
                 state = state + 2**(self.nspstates - j)
                 phase_factor = phase_factor*phase(i,state)
                 state = state + 2**(self.nspstates - i)
-        return state*phase_factor          
-            
+        return state*phase_factor
+
     def setup_twobody_old(self):
         M = np.zeros(shape=(self.nSD,self.nSD))
         """ Two body interaction from sp-me's in file """
@@ -301,7 +301,7 @@ class ShellModel:
                     occupied.append(self.nspstates-n)
             for sp_state in occupied:
                 M[ob_ind,ob_ind] += self.spenergy[sp_state-1]
-        return M        
+        return M
 
     def init_H(self):
         self.H = np.zeros(shape=(self.nSD,self.nSD))
@@ -335,7 +335,7 @@ class ShellModel:
                         else apply the operator destroying n,l,j,mj and create n,l,j,mj+1 """
                         if sd & (0b1<<(self.nspstates-int(spstate[0]))) == (0b1<<(self.nspstates-int(spstate[0]))):
                             continue
-                        else:                                                      
+                        else:
                             """ store the final slater determinant along with the eigenvalue in a list """
                             final_sd = sd ^ (0b1<<n)
                             final_sd = final_sd ^ (0b1 << (self.nspstates-int(spstate[0])))
@@ -361,7 +361,7 @@ class ShellModel:
                         else apply the operator destroying n,l,j,mj and create n,l,j,mj-1 """
                         if sd & (0b1<<(self.nspstates-int(spstate[0]))) == (0b1<<(self.nspstates-int(spstate[0]))):
                             continue
-                        else:                                                      
+                        else:
                             """ store the final slater determinant along with the eigenvalue in a list """
                             final_sd = sd ^ (0b1<<n) # annhilation operation
                             final_sd = final_sd ^ (0b1 << (self.nspstates-int(spstate[0]))) # creation operation
@@ -409,20 +409,20 @@ class ShellModel:
                 for _sd in J_lower_J_raise_sd:
                     if _sd[1] == unique_sd:
                         temp[0]+=_sd[0]
-                J_squared_sd.append(temp)    
+                J_squared_sd.append(temp)
         J_z_sd = self.J_z(sd)
         J_z_J_z_sd = [J_z_sd[0]*J_z_sd[0],sd]
         for _sd in J_squared_sd:
             if _sd[1]==sd:
-                _sd[0] += J_z_sd[0] + J_z_J_z_sd[0]                
+                _sd[0] += J_z_sd[0] + J_z_J_z_sd[0]
         return J_squared_sd
 
     def operator_expectation_value(self,operator,final,initial):
         if type(final)==type(initial)==list:
             True
-        elif type(initial)==list: 
+        elif type(initial)==list:
             final = [[1,final]]
-        elif type(final)==list: 
+        elif type(final)==list:
             initial = [[1,initial]]
         else:
             initial = [[1,initial]]
@@ -447,7 +447,7 @@ class ShellModel:
                 for _sd in final_operator_sd:
                     if _sd[1] == unique_sd:
                         temp[0]+=_sd[0]
-                operator_sd.append(temp)    
+                operator_sd.append(temp)
 
         J_squared_eigenvalue = 0
         for op_sd in operator_sd:
@@ -455,21 +455,21 @@ class ShellModel:
                 if query_sd[1]==op_sd[1]:
                     J_squared_eigenvalue += query_sd[0]*op_sd[0]
         return J_squared_eigenvalue
-                                             
-           
+
+
     def total_J(self,sd=None,Jsq=None):
         if Jsq != None:
-            return 0.5*(-1+np.sqrt(1+4*Jsq))            
+            return 0.5*(-1+np.sqrt(1+4*Jsq))
         elif sd == None:
             print "STOP: no slater determinant or Jsquared eigenvalue given"
             exit()
         else:
             J_sq = self.J_squared(sd)
             return 0.5*(-1+np.sqrt(1+4*J_sq))
-        
+
     def init_block_diaganol_H(self):
         """ Build a block diaganol matrix based on number of broken pairs,
-        and subsets of total M projection """         
+        and subsets of total M projection """
 
         sp_j = []
         n=n_prev = -1
@@ -494,13 +494,13 @@ class ShellModel:
                 j_prev = spstate[3]
                 energy_prev = spstate[5]
                 sp_j.append(spstate[3]/2.0)
-                
+
         total_hamiltonian = []
         self.possible_total_M = np.arange(
                 -sum(list(reversed(sorted(self.jz)))[0:self.nparticles]),
                      sum(list(reversed(sorted(self.jz)))[0:self.nparticles])+1,1.0)
 
-        for nbroken in range(0,self.nparticles/2+1):       
+        for nbroken in range(0,self.nparticles/2+1):
             nbroken_Hamiltonians = []
             """ for M in range of -max_proj with nparticles to +max_proj """
             for M in self.possible_total_M:
@@ -513,7 +513,7 @@ class ShellModel:
 #                    print "[",
 #                    for item in row:
 #                        print format(item,'+.00f'),
-#                    print "]"    
+#                    print "]"
             total_hamiltonian.append(block_diag.block_diag(arrs=nbroken_Hamiltonians))
         total_hamiltonian = block_diag.block_diag(arrs=total_hamiltonian)
         self.SD = slater_determinants
@@ -533,10 +533,11 @@ def remove_duplicates(seq):
     seen = set()
     seen_add = seen.add
     return [ x for x in seq if x not in seen and not seen_add(x)]
-                
+
+
 if __name__=='__main__':
     p = argparse.ArgumentParser()
-   
+
     p.add_argument('-i','--input',dest='input',
                    action='store',required=True,
                    help='The input file to be used in the shell-model calculation')
@@ -550,11 +551,34 @@ if __name__=='__main__':
         output = p.input.replace(".dat",".pdf")
     else:
         output = p.outputs
-    
 
+
+    # plot seperation energies
+    # if p.plot == "10":
+    #     isotopes = [17,18,19,20,21,22,23,24,25,26,27]
+    #     ground_state_energies = []
+    #     for i,isotope in enumerate(isotopes):
+    #         inputfile = "shell_"+str(isotope)+"O.dat"
+    #         if i==0:
+    #             smObj = ShellModel(inputfile,interaction='usdb')
+    #         else:
+    #             smObj.reinitialize(inputfile,interaction='usdb')
+    #         smObj.init_SD()
+    #         smObj.init_H()
+    #         eigenvectors = np.linalg.eigh(smObj.H)
+    #         ground_state_energies.append([isotope,eigenvectors[0][0]])
+    #     ground_state_energies = np.asarray(ground_state_energies)
+    #     pylab.plot(ground_state_energies[:,0][1:]-8,-np.diff(ground_state_energies[:,1]))
+    #     pylab.grid()
+    #     pylab.savefig("/user/sullivan/public_html/sep_en.pdf")
+
+
+    ############################################
     ## -== Begin Shell Model Calculations ==- ##
+    ############################################
+
     smObj = ShellModel(data,interaction='usdb')
-    if True:        
+    if True:
         smObj.init_block_diaganol_H()
         #smObj.init_SD()
         #smObj.init_H()
@@ -581,7 +605,7 @@ if __name__=='__main__':
         unique_energy = remove_duplicates(unique_energy)
 
         if True:
-        # find j-values of H eigenstates 
+        # find j-values of H eigenstates
             nevalue = 0
             energy = []
             Js = []
@@ -592,12 +616,12 @@ if __name__=='__main__':
                 current_energy = round(eigenvectors[0][nevalue])
                 for i in np.nonzero(eigenstate)[0]:
                     initial_eigenstate.append([eigenstate[i],smObj.SD[i]])
-                
+
                 J_sqrd = smObj.operator_expectation_value(smObj.J_squared,initial_eigenstate,initial_eigenstate)
                 J = smObj.total_J(Jsq=J_sqrd)
                 print round(eigenvectors[0][nevalue],3),round(J,1)
                 energy.append(round(eigenvectors[0][nevalue],3))
-                Js.append(round(J,1))            
+                Js.append(round(J,1))
                 nevalue += 1
 
             unique_js = []
@@ -610,13 +634,14 @@ if __name__=='__main__':
                     unique_js.append(j)
                     j_prev = j
             print len(unique_js), len(unique_energy)
-                
 
-    if p.plot != 0:
+
+    # plot the energy levels
+    if True:
         pylab.rcParams['text.latex.preamble'] = [
-            r'\usepackage{helvet}',   
-            r'\usepackage{sansmath}', 
-            r'\sansmath']  
+            r'\usepackage{helvet}',
+            r'\usepackage{sansmath}',
+            r'\sansmath']
         unique_energy = np.asarray(unique_energy) - unique_energy[0]
         fig = pylab.figure(figsize=(4,7))
         #pylab.rc('lines',linewidth=1.5)
@@ -657,5 +682,5 @@ if __name__=='__main__':
         #grid()
         canvas.annotate(p.input.replace("shell_","").replace(".dat",""),xy=(1.55,-0.8),xytext=(1.55,-0.8))
         pylab.ylabel("E (MeV)")
-        pylab.savefig("/user/sullivan/public_html/"+output)
-        exit()    
+        pylab.savefig("./"+output)
+        exit()
