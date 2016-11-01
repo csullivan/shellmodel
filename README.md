@@ -1,5 +1,5 @@
 # shellmodel
-A simple nuclear shellmodel class written in python. Outputs energy level diagrams in a way similar to NuShellX.
+A simple (bitwise) nuclear shellmodel class written in python. Outputs energy level diagrams in a way similar to NuShellX.
 
 Usage:
 ```
