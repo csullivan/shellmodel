@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import numpy as np
 import itertools
 import pylab
@@ -10,7 +12,6 @@ import block_diag
 import fileinput
 import sys
 import argparse
-
 
 class ShellModel:
     nparticles = 0
@@ -682,5 +683,5 @@ if __name__=='__main__':
         #grid()
         canvas.annotate(p.input.replace("shell_","").replace(".dat",""),xy=(1.55,-0.8),xytext=(1.55,-0.8))
         pylab.ylabel("E (MeV)")
-        pylab.savefig("./"+output)
+        pylab.savefig("./"+output.split('/')[-1])
         exit()
